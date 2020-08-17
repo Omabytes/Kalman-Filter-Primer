@@ -1,0 +1,434 @@
+\documentclass[12pt]{article}
+
+\usepackage{fontspec}
+
+\usepackage[square,sort,comma,numbers]{natbib}
+
+\usepackage{url}
+
+\usepackage{listings}
+\lstset{frame=single,breaklines=true}
+\setcounter{secnumdepth}{4}
+\sloppy
+
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\usepackage{color}
+\definecolor{mygreen}{RGB}{28,172,0}
+\definecolor{mylilac}{RGB}{170,55,241}
+
+\title{Understanding the Kalman Filter}
+\author{Robert Bragg \\ Computer Science \& Electronics \\ University of Bristol \\ rb13234@my.bristol.ac.uk}
+\date{}
+
+\begin{document}
+
+\twocolumn
+\maketitle
+\begin{abstract}
+The Kalman filter is considered an optimal algorithm for taking Gaussian noisy measurements and producing estimations of unknown variables for linear systems. This paper aims to present the Kalman filter in an intuitive, easy to follow manner and to demonstrate its application in the case of one dimensional movement.
+\end{abstract}
+
+\section{Introduction}
+Developed by Rudolf E. Kálmán and published in 1960\cite{kalman1960new}, the filter uses Bayesian inference and joint probability distribution to estimate new data in discreet time. The algorithm uses two principal steps; prediction of the new state from the old state along with any system inputs, followed by incorporation of all measurements taken. At all times the variance, or uncertainty, of the system is stored. Although this variance is not assumed to necessarily be Gaussian, it does yield an exact conditional probability estimate for that case. \par
+	In essence the process can be thought of as a form of weighted averaging where extrapolations or measurements with more certainty are given higher weighting. 
+
+\section{Matrix Representation Preface}
+A good basis in linear algebra is advised when looking to implement the Kalman filter and while this paper will not go into the derivations of the filter, the reader should have at least a fundamental understanding of matrices and their purpose. Going through the calculations by hand with a very simple example such as the one used below is an excellent way to get a more intuitive feel for how this algorithm works; while the equations may seem fairly abstract, looking at how they behave with real numbers can help to see in what ways the matrices interact with one another.
+
+\section{Understanding the problem}
+The Kalman filter sees the world as a collection of variables with Gaussian distributed values and relies upon combination of these distributions to function. Therefore key to understanding and later implementing the filter is proper characterisation of the state and the measurements. Each variable has a mean \(\mu\) representing the best estimate and a variance \(\sigma^2\) modelling the uncertainty. \par
+
+	The state is the filter's representation of the variables to be estimated. For instance, imagine the simple case where the one-dimensional position and velocity of an object needs to be estimated e.g. a train on a track. The state here would be a vector containing the estimation means as shown:
+\[\chi 
+=
+\left |  \begin{array}{c}
+pos \\
+vel
+\end{array}  \right |\]
+
+with an associated covariance matrix:
+\[ P 
+= 
+\left |  \begin{array}{cc}
+\Sigma_{pp} & \Sigma_{pv} \\
+\Sigma_{vp} & \Sigma_{vv}
+\end{array}  \right |\]
+
+
+Let's also imagine that there are two sensors, one measuring the position of the train along the track in meters(m), and one measuring the velocity of the train in meters per second(m/s). Their values will be stored in the vector:
+\[z 
+=
+\left |  \begin{array}{c}
+posMeas \\
+velMeas
+\end{array}  \right |\]
+
+also with an associated covariance matrix:
+\[R 
+= 
+\left |  \begin{array}{cc}
+\Sigma_{pMpM} & \Sigma_{pMvM} \\
+\Sigma_{vMpM} & \Sigma_{vMvM}
+\end{array}  \right |\]
+
+It is worth noting that the accuracy of the filter relies heavily on the accuracy of the covariance matrices and hence on proper characterisation of the state and the measurement apparatus.\par
+From here the filter proceeds sequentially with step \textit{n} being derived from step \textit{n-1} combined with the control inputs and measurement readings.
+
+\section{Step by Step Analysis of the Filter}
+The Kalman filter only ever uses the last time step to calculate the next, along with any information gained through control inputs or sensors. An initial state is required to begin the algorithm; while an accurate starting point is certainly very helpful, the filter will converge towards the true state fairly quickly.
+
+\subsection{Step One: Extrapolation with Control Input}
+\subsubsection{Extrapolation}
+From the state values in the previous time step we can extrapolate to where we expect the state values to be now. Intuitively, the previous position and velocity will have an effect on the new position while only the previous velocity will effect the new velocity. Formally written from simple kinematic principals:
+\[pos_n = pos_{n-1} + \Delta t vel_{n-1}\]
+\[vel_n = vel_{n-1}\]
+
+In matrix form:
+\[\left |  \begin{array}{c}
+pos_n \\
+vel_n
+\end{array}  \right |
+= 
+\left |  \begin{array}{cc}
+1 & \Delta t \\
+0 & 1
+\end{array}  \right |
+\left |  \begin{array}{c}
+pos_{n-1} \\
+vel_{n-1}
+\end{array}  \right |\]
+
+This transformational matrix is known as the state transition matrix, denoted \textit{F},  and details how each variable in the state matrix effects every other when we extrapolate to the next time step.\par 
+	Having updated the prediction the covariance now also needs updating. Using the identity:
+\[Cov(\chi) = \Sigma\]
+\[Cov(A\chi) = A \Sigma A^T\]
+It can be shown that since:
+\[\hat{\chi}_{n|n-1} = F\chi_{n-1|n-1} \]
+then:
+\[P_{n|n-1} = FP_{n-1|n-1}F^T\]
+
+\subsubsection{Control input}
+	At this stage any control levers can be introduced to the model. In this example, we will look at the idea of the train having control over its acceleration. The acceleration can be introduced into the system using a similar style of matrix to that used in the extrapolation earlier where each element represents the effect of a control lever on every part of the state. This matrix is referred to as the input or control matrix and will be described as:
+\[B
+=
+\left |  \begin{array}{c}
+dt^2/2 \\
+dt
+\end{array}  \right |\]
+
+from the kinematic equations:
+\[pos_n = pos_{n-1} + \Delta t vel_{n-1} + \frac{1}{2} u \Delta t^2\]
+\[vel_n = vel_{n-1} + u \Delta t\]
+where u = acceleration.
+
+The control process has its own associated variance caused by imperfect application in a real world environment; in this example for instance variance could be introduced through wheel slippage on the tracks. Here the variance will simply be:
+\[Q 
+=
+\textrm{input variance}
+\times
+BB^T\]
+
+\subsubsection{Overall}
+The combined overall equations for this step are:
+\[\hat{\chi}_{n|n-1} = F\hat{\chi}_{n-1|n-1} + Bu\]
+where \textit{u} is the input acceleration, and:
+\[P_{n|n-1} = FP_{n-1|n-1}F^T + Q\]
+describes the covariance update.
+
+\subsection{Step Two: Measurements Update}
+Now that there is a first estimate for where the train should be based on the information available from the last step, the measurement information acquired this step can be utilised. Once again there will be a mean estimate value for each sensor (i.e. the reading) and an associated covariance matrix for the sensory apparatus as a whole. \par
+\subsection{Mapping the Readings to the State}
+	Firstly there needs to exist an association matrix which maps the measurements vector onto the state space. In this example where we have the measurement vector:
+\[z 
+=
+\left |  \begin{array}{c}
+posMeas \\
+velMeas
+\end{array}  \right |\]
+
+the association matrix is simply:
+\[H 
+=
+\left |  \begin{array}{cc}
+1 & 0 \\
+0 & 1
+\end{array}  \right |\]
+
+showing that the measured position has a one-to-one relationship with the state position, no relationship to the state velocity and vice versa for the measured velocity.\par
+
+\subsubsection{The Innovation Vector}
+	From the measurement vector containing the sensor readings the innovation vector is derived. This describes the measurement residual or, more intuitively, the difference between each reading and the state estimate from step one and is given by:
+  \[Inn 
+  =
+  z - H\hat{\chi}_{n|n-1}\]
+  The covariance of this innovation vector is derived from the estimation covariance and the measurement covariance as shown:
+\[\Sigma_{Inn}
+=
+H P_{n|n-1} H^T + R\]
+
+\subsubsection{Combination Through the Kalman Gain}
+The innovation now needs to be combined with the step one estimate to give an overall prediction of the state. The Kalman gain is used to weight the two previous steps, and can be thought of as the proportional confidence of the measurements relative to the extrapolated state prediction from step one. It should therefore be intuitive that the Kalman gain is derived from the covariances which describe the probable error. The Kalman gain is given in the equation below:
+\[K
+=
+\frac{P_{n|n-1} H^T}{\Sigma_{Inn}}\]
+
+The state estimate can now be updated simply with the equation:
+\[\hat{\chi}_{n|n}
+=
+\hat{\chi}_{n|n-1} + KInn\]
+
+The final step is to calculate the new covariance of the state estimate \(P_{n|n}\) as to be used in the next algorithm iteration using:
+\[P_{n|n}
+=
+P_{n|n-1} - K H P_{n|n-1}\]
+
+\subsection{Notes}
+A full mathematical walkthrough of one time step for the example used is available in appendix \ref{appendix.maths}. It will be shown that for the initial state at time \(n=1\) then the covariance of the state is equal to that of the process noise.
+
+
+\section{Kalman Filter Variants}
+While the Kalman filter can be utilised in a wide variety of applications, there are variants which allow use of the filter in other situations.
+
+\subsection{Extended Kalman Filter}
+The extended Kalman filter takes non-linear system models and uses mathematical techniques adapted from multivariate Taylor series expansion to linearise them. While this does mean that the filter can be used for higher than first order systems, performance benefits decrease with order.\cite{einicke2012smoothing} There are downsides to the EKF; it is not considered to be an optimal estimator and errors in initial state or process modelling cause filter divergence.\cite{huang2008analysis} Despite this, the EKF is currently the used standard for navigational systems and other non-linear system estimations.
+
+\subsection{Unscented Kalman Filter}
+For higher order non-linear systems where the efficacy of the EKF can deteriorate, the unscented filter can provide a better estimate of the true state. It also appears to be more robust than he EKF in all situations.\cite{gustafsson2012some} The UKF samples a minimal set of so called sigma points from the mean-covariance distribution and then propagates these through the non-linear functions, generating a new mean and covariance at the end of this process. The sample points are chosen using the unscented transform technique.\cite{julier1997new}\cite{julier2004unscented}
+
+\section{Conclusion}
+
+
+\bibliographystyle{ieeetr}
+\bibliography{references.bib}
+\nocite{faragher2012basis}
+
+\newpage
+\onecolumn
+\appendix{Appendix}
+\section{Single Time Step Mathematical Walkthrough}\label{appendix.maths}
+This walkthrough will go through one full time step of the train system used previously. it will assume a starting position of 10m, velocity of 10m/s and constant acceleration of 1m/s\textsuperscript{2}. The timestep will be 1s long. Measured position, measured velocity and control input variance will be 2m, 2m/s and 0.5m/s\textsuperscript{2} respectively. Assume measurement readings at time \textit{n} of position 21m and velocity 10.5m/s.
+
+\subsection{Starting Equations at Time \textit{n-1}}
+Kinematic equations:
+\begin{equation}
+pos_n = pos_{n-1} + \Delta t vel_{n-1}
+\end{equation}
+\begin{equation}
+vel_n = vel_{n-1}
+\end{equation}
+
+give transition matrix:
+\begin{equation}
+F 
+=
+\left |  \begin{array}{cc}
+1 & \Delta t \\
+0 & 1
+\end{array}  \right |
+\end{equation}
+
+Further kinematic equations:
+\begin{equation}
+pos_n = pos_{n-1} + \Delta t vel_{n-1} + \frac{1}{2} u \Delta t^2
+\end{equation}
+\begin{equation}
+vel_n = vel_{n-1} + u \Delta t
+\end{equation}
+
+give control matrix:
+\begin{equation}
+B
+=
+\left |  \begin{array}{c}
+dt^2/2 \\
+dt
+\end{array}  \right |
+\end{equation}
+
+Covariance that the control input introduces to the estimate through the equation:
+\begin{equation}\label{eq:controlE}
+Q
+=
+acceleration noise \times BB^T
+=
+\left |  \begin{array}{cc}
+0.0625 & 0.125 \\
+0.125 & 0.25
+\end{array}  \right |
+\end{equation}
+
+State vector:
+\begin{equation}\label{eq:state}
+\chi_{n-1|n-1} 
+=
+\left |  \begin{array}{c}
+pos \\
+vel
+\end{array}  \right |
+=
+\left |  \begin{array}{c}
+10 \\
+10
+\end{array}  \right |
+\end{equation}
+
+with covariance matrix which at n=0 with no measurements is simply Q:
+\begin{equation}
+P 
+= 
+\left |  \begin{array}{cc}
+\Sigma_{pp} & \Sigma_{pv} \\
+\Sigma_{vp} & \Sigma_{vv}
+\end{array}  \right |
+=
+\left |  \begin{array}{cc}
+0.0625 & 0.125 \\
+0.125 & 0.25	
+\end{array}  \right |
+\end{equation}
+
+Given measurement vector:
+\begin{equation}\label{eq:measurement}
+z 
+=
+\left |  \begin{array}{c}
+posMeas \\
+velMeas
+\end{array}  \right |
+\end{equation}
+
+with covariance matrix:
+\begin{equation}
+R 
+= 
+\left |  \begin{array}{cc}
+\Sigma_{pMpM} & \Sigma_{pMvM} \\
+\Sigma_{vMpM} & \Sigma_{vMvM}
+\end{array}  \right |
+=
+\left |  \begin{array}{cc}
+4 & 0 \\
+0 & 4
+\end{array}  \right |
+\end{equation}
+
+mapping (\ref{eq:measurement}) to (\ref{eq:state}) requires the state-measurement association matrix:
+\begin{equation}
+H 
+=
+\left |  \begin{array}{cc}
+1 & 0 \\
+0 & 1
+\end{array}  \right |
+\end{equation}
+
+
+
+
+\subsection{Step One}
+\begin{equation}
+\hat{\chi_{n|n-1}}
+=
+F\hat{\chi_{n-1|n-1}} + Bu
+=
+\left |  \begin{array}{c}
+20.5 \\
+11
+\end{array}  \right |
+\end{equation}
+where u = input acceleration
+
+\begin{equation}
+P_{n|n-1}
+=
+FPF^T + Q
+=
+\left |  \begin{array}{cc}
+0.25 & 0.25 \\
+0.6875 & 0.625
+\end{array}  \right |
+\end{equation}
+
+\subsection{Step Two}
+\begin{equation}
+Inn 
+=
+z - H\hat{\chi}_{n|n-1}
+=
+\left |  \begin{array}{c}
+0.5 \\
+-0.5
+\end{array}  \right |
+\end{equation}
+
+\begin{equation}
+\Sigma_{Inn}
+=
+H P_{n|n-1} H^T + R
+=
+\left |  \begin{array}{cc}
+4.0625 & 0.125 \\
+0.125 & 4.25
+\end{array}  \right |
+\end{equation}
+
+\begin{equation}
+K
+=
+\frac{P_{n|n-1} H^T}{\Sigma_{Inn}}
+=
+\left |  \begin{array}{cc}
+0.1504 & 0.1132 \\
+0.1196 & 0.1141
+\end{array}  \right |
+\end{equation}
+
+\begin{equation}
+\hat{\chi}_{n|n}
+=
+\hat{\chi}_{n|n-1} + KInn
+=
+\left |  \begin{array}{c}
+20.5186 \\
+11.0027
+\end{array}  \right |
+\end{equation}
+
+\begin{equation}
+P_{n|n}
+=
+P_{n|n-1} - K H P_{n|n-1}
+=
+\left |  \begin{array}{cc}
+0.4744 & 0.3682 \\
+0.3682 & 0.3832
+\end{array}  \right |
+\end{equation}
+
+
+\pagebreak
+\section{MATLAB Code}
+\lstset{language=Matlab,%
+    %basicstyle=\color{red},
+    breaklines=true,%
+    morekeywords={matlab2tikz},
+    keywordstyle=\color{blue},%
+    morekeywords=[2]{1}, keywordstyle=[2]{\color{black}},
+    identifierstyle=\color{black},%
+    stringstyle=\color{mylilac},
+    commentstyle=\color{mygreen},%
+    showstringspaces=false,%without this there will be a symbol in the places where there is a space
+    numbers=left,%
+    numberstyle={\tiny \color{black}},% size of the numbers
+    numbersep=9pt, % this defines how far the numbers are from the text
+    emph=[1]{for,end,break},emphstyle=[1]\color{red}, %some words to emphasise
+    %emph=[2]{word1,word2}, emphstyle=[2]{style},    
+}
+\lstinputlisting{KalmanExample.m}
+Code heavily modified from that written by Simon, D.\cite{simon2001kalman}
+
+
+\end{document}
+

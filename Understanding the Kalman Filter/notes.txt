@@ -1,0 +1,7 @@
+talk about what the covariance represents
+
+explain notation
+
+might be worth adding how to calculate the covariance?
+
+write conclusion
